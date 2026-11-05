@@ -1,59 +1,131 @@
-from django.shortcuts import render
 
-# Create your views here.
 from django.shortcuts import render, get_object_or_404, redirect
-from .models import Course, Question, Choice, Submission
+
+from .models import (
+  Course,
+  Question,
+  Choice,
+  Submission,
+  Enrollment
+)
 
 
 def course_details(request, course_id):
   course = get_object_or_404(Course, id=course_id)
+
   lessons = course.lesson_set.all()
   questions = course.question_set.all()
 
-  return render(request,
-                'onlinecourse/course_details_bootstrap.html',
-                {'course': course, 'lessons': lessons,
-                 'questions': questions})
+  return render(
+    request,
+    'onlinecourse/course_details_bootstrap.html',
+    {
+      'course': course,
+      'lessons': lessons,
+      'questions': questions
+    }
+  )
 
 
 def submit(request, course_id):
+
+  course = get_object_or_404(Course, id=course_id)
+
   if request.method == 'POST':
-    course = get_object_or_404(Course, id=course_id)
-    questions = course.question_set.all()
 
-    score = 0
-    total = questions.count()
+    if not request.user.is_authenticated:
+      return redirect('admin:login')
 
-    for question in questions:
-      selected_id = request.POST.get(str(question.id))
+    enrollment, created = Enrollment.objects.get_or_create(
+      user=request.user,
+      course=course
+    )
 
-      if selected_id:
-        choice = get_object_or_404(
-          Choice, id=selected_id, question=question
-        )
+    submission = Submission.objects.create(
+      enrollment=enrollment
+    )
 
-        Submission.objects.create(
-          user=request.user,
-          question=question,
-          choice=choice
-        )
+    selected_ids = []
 
-        if choice.is_correct:
-          score += question.grade
+    for question in course.question_set.all():
+      selected_ids.extend(
+        request.POST.getlist(str(question.id))
+      )
 
-    request.session['score'] = score
-    request.session['total'] = sum(q.grade for q in questions)
+    selected_choices = Choice.objects.filter(
+      question__course=course,
+      id__in=selected_ids
+    )
 
-    return redirect('show_exam_result')
+    submission.choices.set(selected_choices)
 
-  return redirect('course_details', course_id=course_id)
+    return redirect(
+      'show_exam_result',
+      course_id=course.id,
+      submission_id=submission.id
+    )
+
+  return redirect(
+    'course_details',
+    course_id=course_id
+  )
 
 
-def show_exam_result(request):
-  score = request.session.get('score', 0)
-  total = request.session.get('total', 0)
+def show_exam_result(request, course_id, submission_id):
 
-  return render(request, 'onlinecourse/exam_result.html', {
-    'score': score,
-    'total': total
-  })
+  course = get_object_or_404(Course, id=course_id)
+
+  submission = get_object_or_404(
+    Submission,
+    id=submission_id,
+    enrollment__course=course
+  )
+
+  selected_choices = submission.choices.all()
+
+  selected_ids = list(
+    selected_choices.values_list('id', flat=True)
+  )
+
+  questions = course.question_set.all()
+
+  grade = 0
+  total = sum(question.grade for question in questions)
+
+  question_results = []
+
+  for question in questions:
+
+    selected_question_choices = selected_choices.filter(
+      question=question
+    )
+
+    correct_choices = question.choice_set.filter(
+      is_correct=True
+    )
+
+    is_correct = question.is_get_score(selected_ids)
+
+    if is_correct:
+      grade += question.grade
+
+    question_results.append({
+      'question': question,
+      'selected_choices': selected_question_choices,
+      'correct_choices': correct_choices,
+      'is_correct': is_correct
+    })
+
+  return render(
+    request,
+    'onlinecourse/exam_result.html',
+    {
+      'course': course,
+      'submission': submission,
+      'selected_ids': selected_ids,
+      'grade': grade,
+      'score': grade,
+      'total': total,
+      'question_results': question_results
+    }
+  )

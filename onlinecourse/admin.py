@@ -1,9 +1,15 @@
+
 from django.contrib import admin
 
-# Register your models here.
-from django.contrib import admin
-from django.contrib.auth.models import User
-from .models import Course, Lesson, Enrollment, Question, Choice, Submission
+from .models import (
+  Course,
+  Lesson,
+  Instructor,
+  Learner,
+  Question,
+  Choice,
+  Submission
+)
 
 
 class QuestionInline(admin.StackedInline):
@@ -17,6 +23,7 @@ class ChoiceInline(admin.StackedInline):
 
 
 class QuestionAdmin(admin.ModelAdmin):
+  list_display = ('question_text',)
   inlines = [ChoiceInline]
 
 
@@ -30,7 +37,8 @@ class CourseAdmin(admin.ModelAdmin):
 
 admin.site.register(Course, CourseAdmin)
 admin.site.register(Lesson, LessonAdmin)
-admin.site.register(Enrollment)
+admin.site.register(Instructor)
+admin.site.register(Learner)
 admin.site.register(Question, QuestionAdmin)
 admin.site.register(Choice)
 admin.site.register(Submission)

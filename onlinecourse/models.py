@@ -1,6 +1,4 @@
-from django.db import models
 
-# Create your models here.
 from django.db import models
 from django.contrib.auth.models import User
 
@@ -22,6 +20,20 @@ class Lesson(models.Model):
     return self.title
 
 
+class Instructor(models.Model):
+  user = models.OneToOneField(User, on_delete=models.CASCADE)
+
+  def __str__(self):
+    return self.user.username
+
+
+class Learner(models.Model):
+  user = models.OneToOneField(User, on_delete=models.CASCADE)
+
+  def __str__(self):
+    return self.user.username
+
+
 class Question(models.Model):
   course = models.ForeignKey(Course, on_delete=models.CASCADE)
   content = models.CharField(max_length=500)
@@ -29,6 +41,25 @@ class Question(models.Model):
 
   def __str__(self):
     return self.content
+
+  @property
+  def question_text(self):
+    return self.content
+
+  def is_get_score(self, selected_ids):
+    correct_ids = set(
+      self.choice_set.filter(
+        is_correct=True
+      ).values_list('id', flat=True)
+    )
+
+    selected_question_ids = set(
+      self.choice_set.filter(
+        id__in=selected_ids
+      ).values_list('id', flat=True)
+    )
+
+    return correct_ids == selected_question_ids
 
 
 class Choice(models.Model):
@@ -40,13 +71,6 @@ class Choice(models.Model):
     return self.content
 
 
-class Submission(models.Model):
-  user = models.ForeignKey(User, on_delete=models.CASCADE)
-  question = models.ForeignKey(Question, on_delete=models.CASCADE)
-  choice = models.ForeignKey(Choice, on_delete=models.CASCADE)
-  submitted_at = models.DateTimeField(auto_now_add=True)
-
-
 class Enrollment(models.Model):
   user = models.ForeignKey(User, on_delete=models.CASCADE)
   course = models.ForeignKey(Course, on_delete=models.CASCADE)
@@ -54,3 +78,53 @@ class Enrollment(models.Model):
 
   def __str__(self):
     return f"{self.user.username} - {self.course.name}"
+
+
+class Submission(models.Model):
+
+  # Existing fields retained for database compatibility
+  user = models.ForeignKey(
+    User,
+    on_delete=models.CASCADE,
+    null=True,
+    blank=True
+  )
+
+  question = models.ForeignKey(
+    Question,
+    on_delete=models.CASCADE,
+    null=True,
+    blank=True
+  )
+
+  choice = models.ForeignKey(
+    Choice,
+    on_delete=models.CASCADE,
+    related_name='old_submissions',
+    null=True,
+    blank=True
+  )
+
+  submitted_at = models.DateTimeField(auto_now_add=True)
+
+  # Required submission fields
+  enrollment = models.ForeignKey(
+    Enrollment,
+    on_delete=models.CASCADE,
+    null=True,
+    blank=True
+  )
+
+  choices = models.ManyToManyField(
+    Choice,
+    related_name='submissions'
+  )
+
+  def __str__(self):
+    if self.enrollment:
+      return f"Submission by {self.enrollment.user.username}"
+
+    if self.user:
+      return f"Submission by {self.user.username}"
+
+    return f"Submission {self.id}"
